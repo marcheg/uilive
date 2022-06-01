@@ -5,8 +5,11 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/pborman/ansi"
 )
 
 // ESC is the ASCII code for escape character
@@ -85,15 +88,28 @@ func (w *Writer) Flush() error {
 
 	lines := 0
 	var currentLine bytes.Buffer
+	// keep copy of the buffer to calculate length of the string without ansi codes
+	var strippedLine strings.Builder
 	for _, b := range w.buf.Bytes() {
 		if b == '\n' {
 			lines++
 			currentLine.Reset()
+			strippedLine.Reset()
 		} else {
 			currentLine.Write([]byte{b})
-			if overFlowHandled && currentLine.Len() > termWidth {
+			strippedLine.WriteByte(b)
+			strippedBytes, err := ansi.Strip([]byte(strippedLine.String()))
+			strippedLen := 0
+			if err != nil {
+				// old behaviour
+				strippedLen = currentLine.Len()
+			} else {
+				strippedLen = len(strippedBytes)
+			}
+			if overFlowHandled && strippedLen > termWidth {
 				lines++
 				currentLine.Reset()
+				strippedLine.Reset()
 			}
 		}
 	}
