@@ -1,4 +1,4 @@
-module github.com/gosuri/uilive
+module github.com/marcheg/uilive
 
 go 1.10
 
