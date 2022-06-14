@@ -5,15 +5,13 @@ import (
 	"errors"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/pborman/ansi"
 )
 
 // ESC is the ASCII code for escape character
 const ESC = 27
+const ESC_END = 'm'
 
 // RefreshInterval is the default refresh interval to update the ui
 var RefreshInterval = time.Millisecond
@@ -88,28 +86,34 @@ func (w *Writer) Flush() error {
 
 	lines := 0
 	var currentLine bytes.Buffer
-	// keep copy of the buffer to calculate length of the string without ansi codes
-	var strippedLine strings.Builder
-	for _, b := range w.buf.Bytes() {
-		if b == '\n' {
+	var escapeSequenceOngoing bool
+
+	bufferBytes := w.buf.Bytes()
+	bufferLength := len(bufferBytes)
+
+	for idx, b := range w.buf.Bytes() {
+		switch {
+
+		case b == '\n':
 			lines++
 			currentLine.Reset()
-			strippedLine.Reset()
-		} else {
-			currentLine.Write([]byte{b})
-			strippedLine.WriteByte(b)
-			strippedBytes, err := ansi.Strip([]byte(strippedLine.String()))
-			strippedLen := 0
-			if err != nil {
-				// old behaviour
-				strippedLen = currentLine.Len()
-			} else {
-				strippedLen = len(strippedBytes)
+
+		case b == ESC:
+			if idx < (bufferLength-1) && bufferBytes[idx+1] >= 0x40 && bufferBytes[idx+1] <= 0x5f {
+				escapeSequenceOngoing = true
 			}
-			if overFlowHandled && strippedLen > termWidth {
-				lines++
-				currentLine.Reset()
-				strippedLine.Reset()
+
+		case escapeSequenceOngoing && b == ESC_END:
+			escapeSequenceOngoing = false
+
+		default:
+			if !escapeSequenceOngoing {
+				currentLine.Write([]byte{b})
+
+				if overFlowHandled && currentLine.Len() > termWidth {
+					lines++
+					currentLine.Reset()
+				}
 			}
 		}
 	}
